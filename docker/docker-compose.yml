@@ -1,0 +1,15 @@
+version: "2"
+services:
+  celery_async_main:
+    container_name: "celery-async-main"
+    image: "celery_async_main"
+    env_file:
+      - $ENV_FILE
+  celery_async_worker:
+    container_name: "celery-async-worker"
+    image: "celery_async_worker"
+  celery_async_redis:
+    container_name: "celery-async-redis"
+    # ports:
+    #   - "6378:6379"
+    image: "redis"
