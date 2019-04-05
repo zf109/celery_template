@@ -6,15 +6,17 @@ from celery.result import ResultBase
 from logging import getLogger
 from time import sleep
 from celery import Celery, chain, task, signature, group, chord
+from celery import chain
 
 
 logger = getLogger(name="proclog")
 # logger.setlevel('INFO')
 
 from config import Config as conf
-from celery import chain
+from topologies import make_chain
 
-def get_celery_app(broker_url, result_backend):
+
+def get_celery_app(broker_url=conf.CELERY_BROKER_URL, result_backend=conf.CELERY_RESULT_BACKEND):
     app = Celery()
     app.conf.update(
         BROKER_URL=broker_url,
@@ -62,3 +64,67 @@ class VectorMultiplicationWorkFlow(Workflow):
         flow = chord(mulgrp)(sum_sigs)
         return flow
 
+
+class SingleNeroNetLayerWorkFlow(Workflow):
+
+    def execute(self, xs, ys):
+        mul_sigs = [signature("multiper.worker.work", kwargs={'x':x, 'y':y}, app=self.app, queue="multiper_queue")
+                    for x, y in zip (xs, ys)]
+        mulgrp = group(*mul_sigs)
+        sum_sig = signature("adder.worker.work", app=self.app, queue="adder_queue")
+        softmax_sig = signature("softmaxer.worker.work", app=self.app, queue="softmaxer_queue")
+        
+        flow = chord(mulgrp)(chain(sum_sig, softmax_sig))
+        return flow
+
+
+class SingleNeroNetLayerWithLongAddWorkFlow(Workflow):
+
+    def execute(self, xs, ys):
+        mul_sigs = [signature("multiper.worker.work", kwargs={'x':x, 'y':y}, app=self.app, queue="multiper_queue")
+                    for x, y in zip (xs, ys)]
+        mulgrp = group(*mul_sigs)
+        sum_sig = signature("adder.worker.work", app=self.app, queue="adder_queue")
+        softmax_sig = signature("softmaxer.worker.work", app=self.app, queue="softmaxer_queue")
+        
+        flow = chord(mulgrp)(chain(sum_sig, softmax_sig, softmax_sig, softmax_sig, softmax_sig))
+        return flow
+
+
+class LongChainAdd(Workflow):
+    def execute(self, x):
+        
+        chain_desc = [
+        {
+            "name": "adder.worker.work",
+            "kwargs": {"x": x},
+            "queue": "adder_queue",
+        },
+        {
+            "name": "softmaxer.worker.work",
+            # "kwargs": {"x": x},
+            "queue": "softmaxer_queue",
+        },
+        {
+            "name": "softmaxer.worker.work",
+            # "kwargs": {"x": x},
+            "queue": "softmaxer_queue",
+        },
+        {
+            "name": "softmaxer.worker.work",
+            # "kwargs": {"x": x},
+            "queue": "softmaxer_queue",
+        },
+        {
+            "name": "softmaxer.worker.work",
+            # "kwargs": {"x": x},
+            "queue": "softmaxer_queue",
+        },
+        {
+            "name": "softmaxer.worker.work",
+            # "kwargs": {"x": x},
+            "queue": "softmaxer_queue",
+        }
+        ]
+        chained = make_chain(chain_desc, app=self.app)
+        return chained.delay()
